@@ -27,6 +27,20 @@ typedef struct {
  * type) should go here.
  */
 
+typedef struct {
+	char name[256];		//name
+	char type[1024];		//type
+	char nextFile[1024];		//next
+	char firstFile[1024];	//link to first file
+	time_t timeAccess;	//time last accessed
+	time_t timeMod;		//time last modified
+	off_t size;		//the file size
+	char path[1024];		//path
+	//s3dirent_t dirArray[1];
+
+	
+} s3dirent_t;
+
 
 
 

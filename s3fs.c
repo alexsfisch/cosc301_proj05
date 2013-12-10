@@ -38,10 +38,38 @@
  * Initialize the file system.  This is called once upon
  * file system startup.
  */
-void *fs_init(struct fuse_conn_info *conn)
+void *fs_init(struct fuse_conn_info *conn) //ALMOST DONE
 {
+	//sommers code
     fprintf(stderr, "fs_init --- initializing file system.\n");
     s3context_t *ctx = GET_PRIVATE_DATA;
+	
+	//our code
+	//need to completely destroy everything in this bucket
+	s3fs_clear_bucket(ctx->s3bucket); //not sure about parameter
+	//do we need to check that the clear did not fail?
+
+	printf("%s\n","test 1");
+	//create a directory object to represent your root directory and store that on S3
+	s3dirent_t dir;					//create directory structur
+	time_t temp;					//create temporory timestamp
+	time(&temp);					//get current time
+	dir.timeAccess = temp;			//set directory last access time to temp
+	dir.timeMod = temp;				//set directory last modified time to temp
+	dir.size = sizeof(s3dirent_t);	//set directory size to size of s3dirent struct
+	strcpy(dir.type,"directory");	//set diretory type to directory
+	strcpy(dir.name, ".");			//set name of directory to ".". STRCPY should malloc
+
+	printf("%s\n","test 2");
+
+	//initialize object (put object in s3), unless fail. then return error
+	if ((s3fs_put_object(ctx->s3bucket, "/", (const uint8_t *)&dir, sizeof(dir)))!=sizeof(dir)) {
+		fprintf(stderr, "failed to intialize");
+		return -EIO;
+	} 
+
+	//everything worked as planned. continue
+	printf("%s\n","test 3");
     return ctx;
 }
 
@@ -49,7 +77,8 @@ void *fs_init(struct fuse_conn_info *conn)
  * Clean up filesystem -- free any allocated data.
  * Called once on filesystem exit.
  */
-void fs_destroy(void *userdata) {
+
+void fs_destroy(void *userdata) { //DONE
     fprintf(stderr, "fs_destroy --- shutting down file system.\n");
     free(userdata);
 }
@@ -63,9 +92,34 @@ void fs_destroy(void *userdata) {
  */
 
 int fs_getattr(const char *path, struct stat *statbuf) {
+	//sommers code
     fprintf(stderr, "fs_getattr(path=\"%s\")\n", path);
     s3context_t *ctx = GET_PRIVATE_DATA;
-    return -EIO;
+
+	//our code
+	s3dirent_t * dir = NULL;
+	if ((s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0, 0)<0)) {
+		fprintf(stderr, "invalid path");
+		return -EIO;
+	}
+	
+	//PRINT ATTRIBUTES
+	printf("%s","NAME:    ");
+	printf("%s\n",(*dir).name);
+	printf("%s","TYPE:    ");
+	printf("%s\n",(*dir).type);
+	printf("%s","LAST ACCESSED:    ");
+	printf("%s\n",(*dir).timeAccess);
+	printf("%s","LAST MODIFIED:    ");
+	printf("%s\n",(*dir).timeMod);
+	printf("%s","SIZE:    ");
+	printf("%i\n",(*dir).size);
+	
+
+	free(dir);	 //free malloced dir
+
+
+	return 0; 
 }
 
 
@@ -76,9 +130,26 @@ int fs_getattr(const char *path, struct stat *statbuf) {
  * this directory
  */
 int fs_opendir(const char *path, struct fuse_file_info *fi) {
+	//sommers code
     fprintf(stderr, "fs_opendir(path=\"%s\")\n", path);
     s3context_t *ctx = GET_PRIVATE_DATA;
-    return -EIO;
+
+	//our code
+	s3dirent_t * dir = NULL;
+	if (s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0,0)<0) //if not a real directory, else store in dir
+	{
+		fprintf(stderr, "path is not valid");
+		return -EIO;
+	}
+
+	//check  to see if the type == "directory"
+	if (strcmp((*dir).type, "directory")!=0) {
+		fprintf(stderr, "not a real directory");
+		return -EIO;
+	}
+
+	free(dir);
+    return 0;
 }
 
 
@@ -89,10 +160,31 @@ int fs_opendir(const char *path, struct fuse_file_info *fi) {
 int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
          struct fuse_file_info *fi)
 {
+	//sommers code
     fprintf(stderr, "fs_readdir(path=\"%s\", buf=%p, offset=%d)\n",
           path, buf, (int)offset);
     s3context_t *ctx = GET_PRIVATE_DATA;
-    return -EIO;
+
+	//our code
+	s3dirent_t * dir = NULL;
+	if (s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0,0)<0) //if not a real directory, else store in dir
+	{
+		fprintf(stderr, "path is not valid");
+		return -EIO;
+	}
+	
+	//check to make sure it is a directory
+	if (strcmp((*dir).type, "directory")!=0) {
+		fprintf(stderr, "not a real directory");
+		return -EIO;
+	}
+	
+	char* tempPath;
+	strcat(tempPath, (*dir).firstFile);
+
+
+	free(dir);		//free malloced dir
+    return 0;
 }
 
 
@@ -102,7 +194,7 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 int fs_releasedir(const char *path, struct fuse_file_info *fi) {
     fprintf(stderr, "fs_releasedir(path=\"%s\")\n", path);
     s3context_t *ctx = GET_PRIVATE_DATA;
-    return -EIO;
+    return 0;//only changed this to a 0. is that really it?
 }
 
 
@@ -115,11 +207,94 @@ int fs_releasedir(const char *path, struct fuse_file_info *fi) {
  * use mode|S_IFDIR.
  */
 int fs_mkdir(const char *path, mode_t mode) {
+	//sommers code
     fprintf(stderr, "fs_mkdir(path=\"%s\", mode=0%3o)\n", path, mode);
     s3context_t *ctx = GET_PRIVATE_DATA;
     mode |= S_IFDIR;
 
-    return -EIO;
+
+	//our code
+	s3dirent_t * dir = NULL;
+	char* directoryPath = strdup(dirname(path)); 	//get path and malloc
+	char* directoryName = strdup(basename(path));	//get name and malloc
+	char* tempPath;
+	//check if name already exists
+	if (s3fs_get_object(ctx->s3bucket, directoryPath, (uint8_t **)&dir, 0,0)<0) //if not a real directory
+	{
+		fprintf(stderr, "path is not valid");
+		return -EIO;
+	}
+	//make sure where you are trying to put is infact a directory
+	if (strcmp((*dir).type, "directory")!=0) {
+		fprintf(stderr, "object is not a not a directory. Can not place here");
+		return -EIO;
+	}
+	//iterate through files and make sure name does not already exist
+	while(((*dir).nextFile)!=NULL) {
+		tempPath = strdup(directoryPath);				//start with original path
+		strcat(tempPath, (*dir).nextFile);			//concat the current file name
+		//get new file
+		if (s3fs_get_object(ctx->s3bucket, tempPath, (uint8_t **)&dir, 0,0)<0) //if not a real directory
+		{
+			fprintf(stderr, "path is not valid");
+			return -EIO;
+		}
+
+		//check if name already exists.
+		if((*dir).nextFile != directoryName) {
+			fprintf(stderr, "name already exists!");
+			return -EEXIST;
+		}
+		tempPath = NULL;
+		
+		
+	}
+
+	
+	//if got to here, then safe to make directory and add it
+	s3dirent_t newDir;
+
+	time_t temp;							//create temporory timestamp
+	time(&temp);							//get current time
+	newDir.timeAccess = temp;					//set directory last access time to temp
+	newDir.timeMod = temp;						//set directory last modified time to temp
+	newDir.size = sizeof(s3dirent_t);			//set directory size to size of s3dirent struct
+	strcpy(newDir.type, "directory");			//set diretory type to directory
+	strcpy(newDir.firstFile, ".");				//set name of directory to ".". STRCPY should malloc
+	strcpy(newDir.nextFile, (*dir).nextFile);			//set the next...why??
+	
+
+	//need to add something about mode_t mode????
+
+	if ((s3fs_put_object(ctx->s3bucket, path, (const uint8_t *)&newDir, sizeof(newDir)))!=sizeof(newDir)) {
+		fprintf(stderr, "failed to add the new directory");
+		return -EIO;
+	} 
+
+
+
+	//add "." as the first entry
+
+	free(newDir.name);						//clear the new directory
+	strcat(newDir.name,".");	
+	strcat(tempPath, directoryPath);	//get the correct path	
+	strcat(tempPath, directoryName);	//get the correct path
+	strcat(tempPath, "/.");				//add the "."
+	newDir.firstFile[0] = '\0';			//will this effectively clear the firstfile?
+	newDir.nextFile[0] = '\0';			//mark that this is the end of the directory
+	
+	if ((s3fs_put_object(ctx->s3bucket, tempPath, (const uint8_t *)&newDir, sizeof(newDir)))!=sizeof(newDir)) {
+		fprintf(stderr, "failed to add the new directory");
+		return -EIO;
+	} 
+
+
+	//free everything malloced
+	free(dir);
+	free(newDir.type);
+	free(newDir.firstFile);
+	free(newDir.name);
+    return 0;
 }
 
 
@@ -127,9 +302,36 @@ int fs_mkdir(const char *path, mode_t mode) {
  * Remove a directory. 
  */
 int fs_rmdir(const char *path) {
+	//sommers code
     fprintf(stderr, "fs_rmdir(path=\"%s\")\n", path);
     s3context_t *ctx = GET_PRIVATE_DATA;
-    return -EIO;
+
+	//our code
+	s3dirent_t * dir = NULL;
+	if (s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0,0)<0) //if not a real directory, else store in dir
+	{
+		fprintf(stderr, "path is not valid");
+		return -EIO;
+	}
+
+	//first check to see if it is a directory
+	if (strcmp((*dir).type, "directory")!=0) {
+		fprintf(stderr, "not a real directory");
+		return -EIO;
+	}
+
+	//next check to see if the directory is empty
+	if ((*dir).nextFile != NULL) {
+		fprintf(stderr, "the directory is not empty");
+		return -EIO;
+	}
+
+
+	
+
+
+	free(dir);
+    return 0;
 }
 
 
@@ -355,7 +557,14 @@ int main(int argc, char *argv[]) {
     s3fs_clear_bucket(s3bucket);
 
     fprintf(stderr, "Starting up FUSE file system.\n");
+	
+	printf("%i\n",argc);
+	printf("%s\n",argv);
+	printf("%i\n",&s3fs_ops);
+	printf("%s\n",stateinfo);
+	
     int fuse_stat = fuse_main(argc, argv, &s3fs_ops, stateinfo);
+
     fprintf(stderr, "Startup function (fuse_main) returned %d\n", fuse_stat);
     
     return fuse_stat;
