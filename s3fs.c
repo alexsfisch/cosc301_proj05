@@ -49,18 +49,26 @@ void *fs_init(struct fuse_conn_info *conn) //ALMOST DONE
 	s3fs_clear_bucket(ctx->s3bucket); //not sure about parameter
 	//do we need to check that the clear did not fail?
 
-	printf("%s\n","test 1");
 	//create a directory object to represent your root directory and store that on S3
 	s3dirent_t dir;					//create directory structur
 	time_t temp;					//create temporory timestamp
 	time(&temp);					//get current time
+	dir.size = sizeof(s3dirent_t);		//set directory size to size of s3dirent struct
+	strcpy(dir.type,"D");		//set diretory type to directory
 	dir.timeAccess = temp;			//set directory last access time to temp
 	dir.timeMod = temp;				//set directory last modified time to temp
-	dir.size = sizeof(s3dirent_t);	//set directory size to size of s3dirent struct
-	strcpy(dir.type,"directory");	//set diretory type to directory
-	strcpy(dir.name, ".");			//set name of directory to ".". STRCPY should malloc
+	
+	//update information for object array of directory
 
-	printf("%s\n","test 2");
+	dir.dirArray[0].timeAccess = temp;			//set directory last access time to temp
+	dir.dirArray[0].timeMod = temp;				//set directory last modified time to temp
+	strcpy(dir.dirArray[0].name, ".");			//set name of directory to ".". 
+	strcpy(dir.dirArray[0].type, "F");			//set name of directory to ".". 
+
+
+	strcpy(dir.dirArray[1].name, "");			//set name of directory to "blank"
+	strcpy(dir.dirArray[1].type, "U");			//set type to unused, indicating end 
+
 
 	//initialize object (put object in s3), unless fail. then return error
 	if ((s3fs_put_object(ctx->s3bucket, "/", (const uint8_t *)&dir, sizeof(dir)))!=sizeof(dir)) {
@@ -69,7 +77,7 @@ void *fs_init(struct fuse_conn_info *conn) //ALMOST DONE
 	} 
 
 	//everything worked as planned. continue
-	printf("%s\n","test 3");
+	printf("%s\n","-------FINISHED INIT-------");
     return ctx;
 }
 
@@ -98,28 +106,58 @@ int fs_getattr(const char *path, struct stat *statbuf) {
 
 	//our code
 	s3dirent_t * dir = NULL;
-	if ((s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0, 0)<0)) {
+	char* directoryPath = strdup(dirname(path)); 	//get path and malloc
+	char* directoryName = strdup(basename(path));	//get name and malloc;
+	if ((s3fs_get_object(ctx->s3bucket, directoryPath, (uint8_t **)&dir, 0, 0)<0)) {
 		fprintf(stderr, "invalid path");
 		return -EIO;
 	}
+
+	//find specified file or directory
+	int i = 0;
+	while(strcmp(((*dir).dirArray[i].type),"U")!=0) {
+		//check if name already exists.
+		if(strcmp((*dir).dirArray[i].name, directoryName)==0) {
+			//PRINT ATTRIBUTES
+			printf("%s","NAME:    ");
+			printf("%s\n",(*dir).dirArray[i].name);
+			printf("%s","TYPE:    ");
+			printf("%s\n",(*dir).dirArray[i].type);
+			printf("%s","LAST ACCESSED:    ");
+			printf("%s\n",(*dir).dirArray[i].timeAccess);
+			printf("%s","LAST MODIFIED:    ");
+			printf("%s\n",(*dir).dirArray[i].timeMod);
+			printf("%s","SIZE:    ");
+			printf("%i\n",(*dir).dirArray[i].size);
+
+
+			//not sure if this is correct
+			statbuf->st_size = (*dir).dirArray[i].size;
+			statbuf->st_atime = (*dir).dirArray[i].timeAccess;
+			statbuf->st_mtime = (*dir).dirArray[i].timeMod;
+			/*
+			statbuf->st_ctime = //what is this?
+ 			statbuf->st_dev =
+ 			statbuf->st_ino =
+ 			statbuf->st_mode =
+ 			statbuf->st_nlink = 
+ 			statbuf->st_uid=
+ 			statbuf->st_gid =
+ 			statbuf->st_rdev =
+ 			statbuf->st_blocks =
+			*/
+			free(dir);	 //free malloced dir
+			free(directoryPath);
+			free(directoryName);
+			printf("%s\n","---------GET ATTRIBUTES FINISHED------------");
+			return 0;
+		}
+		i++; 
+	}
 	
-	//PRINT ATTRIBUTES
-	printf("%s","NAME:    ");
-	printf("%s\n",(*dir).name);
-	printf("%s","TYPE:    ");
-	printf("%s\n",(*dir).type);
-	printf("%s","LAST ACCESSED:    ");
-	printf("%s\n",(*dir).timeAccess);
-	printf("%s","LAST MODIFIED:    ");
-	printf("%s\n",(*dir).timeMod);
-	printf("%s","SIZE:    ");
-	printf("%i\n",(*dir).size);
-	
 
-	free(dir);	 //free malloced dir
-
-
-	return 0; 
+	fprintf(stderr, "path does not exist :(");
+	return EIO; 
 }
 
 
@@ -143,11 +181,11 @@ int fs_opendir(const char *path, struct fuse_file_info *fi) {
 	}
 
 	//check  to see if the type == "directory"
-	if (strcmp((*dir).type, "directory")!=0) {
+	if (strcmp((*dir).type, "D")!=0) {
 		fprintf(stderr, "not a real directory");
 		return -EIO;
 	}
-
+	printf("%s\n","----finished opendir-------");
 	free(dir);
     return 0;
 }
@@ -161,8 +199,7 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
          struct fuse_file_info *fi)
 {
 	//sommers code
-    fprintf(stderr, "fs_readdir(path=\"%s\", buf=%p, offset=%d)\n",
-          path, buf, (int)offset);
+    fprintf(stderr, "fs_readdir(path=\"%s\", buf=%p, offset=%d)\n", path, buf, (int)offset);
     s3context_t *ctx = GET_PRIVATE_DATA;
 
 	//our code
@@ -174,16 +211,27 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 	}
 	
 	//check to make sure it is a directory
-	if (strcmp((*dir).type, "directory")!=0) {
+	if (strcmp((*dir).type, "D")!=0) {
 		fprintf(stderr, "not a real directory");
 		return -EIO;
 	}
 	
-	char* tempPath;
-	strcat(tempPath, (*dir).firstFile);
+	int i = 0;
+	printf("%s", "dirarray[i].type:     ");
+	printf("%s", (*dir).dirArray[i].type);
+	while(strcmp(((*dir).dirArray[i].type),"U")!=0) {
+		//call filler function to fill in directory name to supplied buffer
+		if(filler(buf,(*dir).dirArray[i].name, NULL, 0) != 0) {
+			return -ENOMEM;
+		}
+		printf("%s\n","?!?!?!?!?!?!?!?!?!!!?!!?!?!?!!??!?!?!?!!?!??!?!?!?!?!?!?!?!??!?!?!");
+		i++; 
+	}
+	
 
 
 	free(dir);		//free malloced dir
+	printf("%s\n","-----READDIR FINISHED-------------");
     return 0;
 }
 
@@ -230,60 +278,65 @@ int fs_mkdir(const char *path, mode_t mode) {
 		return -EIO;
 	}
 	//iterate through files and make sure name does not already exist
-	while(((*dir).nextFile)!=NULL) {
-		tempPath = strdup(directoryPath);				//start with original path
-		strcat(tempPath, (*dir).nextFile);			//concat the current file name
-		//get new file
-		if (s3fs_get_object(ctx->s3bucket, tempPath, (uint8_t **)&dir, 0,0)<0) //if not a real directory
-		{
-			fprintf(stderr, "path is not valid");
-			return -EIO;
-		}
-
+	int i = 0;
+	while(strcmp(((*dir).dirArray[i].type),"U")!=0) {
 		//check if name already exists.
-		if((*dir).nextFile != directoryName) {
+		if(strcmp((*dir).dirArray[i].name, directoryName)!=0) {
 			fprintf(stderr, "name already exists!");
 			return -EEXIST;
 		}
-		tempPath = NULL;
-		
-		
+		i++; 
 	}
 
 	
 	//if got to here, then safe to make directory and add it
-	s3dirent_t newDir;
+	s3dirent_t newDir;							//create new directory struct
 
-	time_t temp;							//create temporory timestamp
-	time(&temp);							//get current time
+	time_t temp;								//create temporory timestamp
+	time(&temp);								//get current time
+	strcpy(newDir.type,"D");
 	newDir.timeAccess = temp;					//set directory last access time to temp
 	newDir.timeMod = temp;						//set directory last modified time to temp
 	newDir.size = sizeof(s3dirent_t);			//set directory size to size of s3dirent struct
-	strcpy(newDir.type, "directory");			//set diretory type to directory
-	strcpy(newDir.firstFile, ".");				//set name of directory to ".". STRCPY should malloc
-	strcpy(newDir.nextFile, (*dir).nextFile);			//set the next...why??
-	
+	strcpy(newDir.type, "D");					//set diretory type to directory
+	strcpy(newDir.dirArray[0].name, ".");			//set name of directory to ".". 
+	strcpy(newDir.dirArray[0].type, "F");			//set name of directory to ".". 
+
+
+	strcpy(newDir.dirArray[1].name, "");			//set name of directory to "blank"
+	strcpy(newDir.dirArray[1].type, "U");			//set type to unused, indicating end 
 
 	//need to add something about mode_t mode????
 
-	if ((s3fs_put_object(ctx->s3bucket, path, (const uint8_t *)&newDir, sizeof(newDir)))!=sizeof(newDir)) {
+
+
+
+
+	i = 0;
+	while(strcmp(((*dir).dirArray[i].type),"U")!=0) {
+		//check if name already exists.
+		i++; 
+	}
+
+	objects obj;
+
+	strcpy(obj.name, newDir.name);
+	strcpy(obj.type, newDir.type);
+	obj.timeAccess = newDir.timeAccess;
+	obj.timeMod = newDir.timeMod;
+	obj.size = newDir.size;
+
+	(*dir).dirArray[i] = obj;
+	strcpy((*dir).dirArray[i+1].type, "U"); //need to realloc this
+	
+	//re-upload old directory
+	if ((s3fs_put_object(ctx->s3bucket, directoryPath, (const uint8_t *)&dir, sizeof(dir)))!=sizeof(dir)) {
 		fprintf(stderr, "failed to add the new directory");
 		return -EIO;
 	} 
 
-
-
-	//add "." as the first entry
-
-	free(newDir.name);						//clear the new directory
-	strcat(newDir.name,".");	
-	strcat(tempPath, directoryPath);	//get the correct path	
-	strcat(tempPath, directoryName);	//get the correct path
-	strcat(tempPath, "/.");				//add the "."
-	newDir.firstFile[0] = '\0';			//will this effectively clear the firstfile?
-	newDir.nextFile[0] = '\0';			//mark that this is the end of the directory
-	
-	if ((s3fs_put_object(ctx->s3bucket, tempPath, (const uint8_t *)&newDir, sizeof(newDir)))!=sizeof(newDir)) {
+	//upload new directory
+	if ((s3fs_put_object(ctx->s3bucket, path, (const uint8_t *)&newDir, sizeof(newDir)))!=sizeof(newDir)) {
 		fprintf(stderr, "failed to add the new directory");
 		return -EIO;
 	} 
@@ -292,7 +345,7 @@ int fs_mkdir(const char *path, mode_t mode) {
 	//free everything malloced
 	free(dir);
 	free(newDir.type);
-	free(newDir.firstFile);
+	//free(newDir.firstFile);
 	free(newDir.name);
     return 0;
 }
@@ -321,7 +374,7 @@ int fs_rmdir(const char *path) {
 	}
 
 	//next check to see if the directory is empty
-	if ((*dir).nextFile != NULL) {
+	if (strcmp((*dir).dirArray[0].type, "U") != 0) {
 		fprintf(stderr, "the directory is not empty");
 		return -EIO;
 	}
