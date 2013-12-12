@@ -188,12 +188,11 @@ int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 	}
 	
 	//check to make sure it is a directory
-	if (strcmp((*dir).type, "D")!=0) {
+	/*if (strcmp((*dir).type, "D")!=0) {
 		fprintf(stderr, "not a real directory");
 		return -EIO;
-	}
+	}*/
 	
-	//could make real directory help function??
 	
 	int i = 0;
 	printf("%s", "dirarray[i].type:     ");
@@ -359,131 +358,151 @@ int fs_mkdir(const char *path, mode_t mode) {
  * Remove a directory. 
  */
 int fs_rmdir(const char *path) {
-	//sommers code
+        //sommers code
     fprintf(stderr, "fs_rmdir(path=\"%s\")\n", path);
     s3context_t *ctx = GET_PRIVATE_DATA;
 
-	//our code
-	s3dirent_t * dir = NULL;
+        //our code
+        s3dirent_t * dir = NULL;
 
-	
-	//pull object
-	if (s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0,0)<0) //if not a real directory, else store in dir
-	{
-		fprintf(stderr, "path is not valid");
-		return -EIO;
-	}
+        
+        //pull object
+        if (s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0,0)<0) //if not a real directory, else store in dir
+        {
+                fprintf(stderr, "path is not valid");
+                return -EIO;
+        }
 
-	//first check to see if it is a directory
-	if (strcmp((*dir).type, "D")!=0) {
-		fprintf(stderr, "not a real directory");
-		return -EIO;
-	}
+        //first check to see if it is a directory
+        if (strcmp((*dir).type, "D")!=0) {
+                fprintf(stderr, "not a real directory");
+                return -EIO;
+        }
 
-	//next check to see if the directory is empty
-	if (strcmp(dir[1].type, "U") != 0) {
-		fprintf(stderr, "the directory is not empty");
-		return -EIO;
-	}
+        //next check to see if the directory is empty
+        if (strcmp(dir[1].type, "U") != 0) {
+                fprintf(stderr, "the directory is not empty");
+                return -EIO;
+        }
 
-	char* directoryPath = strdup(path);
-	char* directoryName = strdup(path);
-	printf("%s\n","test .7");
-	directoryPath = strdup(dirname(directoryPath)); 	//get path and malloc
-	directoryName = strdup(basename(directoryName));	//get name and malloc
-	printf("%s","directory path:    ");
-	printf("%s\n",directoryPath);
-	printf("%s","directory name:    ");
-	printf("%s\n",directoryName);
-	char* tempPath;
+        char* directoryPath = strdup(path);
+        char* directoryName = strdup(path);
+        printf("%s\n","test .7");
+        directoryPath = strdup(dirname(directoryPath));         //get path and malloc
+        directoryName = strdup(basename(directoryName));        //get name and malloc
+        printf("%s","directory path: ");
+        printf("%s\n",directoryPath);
+        printf("%s","directory name: ");
+        printf("%s\n",directoryName);
+        char* tempPath;
 
-	s3dirent_t * dirParent = NULL;
-	if (s3fs_get_object(ctx->s3bucket, directoryPath, (uint8_t **)&dirParent, 0,0)<0) //if not a real directory
-	{
-		fprintf(stderr, "path is not valid");
-		return -EIO;
-	}
+        s3dirent_t * dirParent = NULL;
+        if (s3fs_get_object(ctx->s3bucket, directoryPath, (uint8_t **)&dirParent, 0,0)<0) //if not a real directory
+        {
+                fprintf(stderr, "path is not valid");
+                return -EIO;
+        }
 
-	int i = 0;
-	int j = 0;
-	printf("%s\n","testing 100");
-	printf("%s\n",dirParent[i].name);
-	s3dirent_t dirParentNew[sizeof(dirParent)-1];
-	while(strcmp((dirParent[i].type),"U")!=0) {
-		printf("%s\n",dirParent[i].name);
-		if(strcmp(dirParent[i].name, directoryName)==0) {
-			//strcpy(dirParent[i].type,"U");
-			i++;
+        int i = 0;
+        int j = 0;
+        printf("%s\n","testing 100");
+        printf("%s\n",dirParent[i].name);
+        s3dirent_t dirParentNew[sizeof(dirParent)-1];
+        while(strcmp((dirParent[i].type),"U")!=0) {
+                printf("%s\n",dirParent[i].name);
+                if(strcmp(dirParent[i].name, directoryName)!=0) {
+                        //strcpy(dirParent[i].type,"U");
+						dirParentNew[j] = dirParent[i];
+                        printf("%s","name of what is being moved back: ");
+                        printf("%s\n",dirParentNew[j].name);
+                        j++;
+
+                }
+                i++;
+
+        }
+		//at the last element
+		if (strcmp((dirParent[i].type),"U")==0) {
+ 			if(strcmp(dirParent[i].name, directoryName)!=0) {
+           		//strcpy(dirParent[i].type,"U");
+				dirParentNew[j] = dirParent[i];
+				strcpy(dirParentNew[j].type,"U");		
+			}
+			else { //not going to add the last thing;
+				strcpy(dirParentNew[j].type,"U");	
+			}
+
 		}
-		else{
-			dirParentNew[j] = dirParent[i];
-			printf("%s","name of what is being moved back:     ");
-			printf("%s\n",dirParentNew[j].name);
-			i++;
-			j++;
+        printf("%s\n","testing 200");
 
-		}
-	}
-	printf("%s\n","testing 200");
+        printf("%s\n","contents of newParentDir");
+        i=0;
+        while(strcmp((dirParent[i].type),"U")!=0) {
+				printf("%s","name:    ");
+                printf("%s\n",dirParentNew[i].name);
+				printf("%s","type:    ");
+                printf("%s\n",dirParentNew[i].type);
+                i++;
+        }
+        /*int i = 0;
+        while(strcmp((dirParent[i].type),"U")!=0) {
+                //check if name already exists.
+                printf("%s","itterating through parent directory to find file: ");
+                printf("%s\n",dirParent[i].name);
+                if(strcmp(dirParent[i].name, directoryName)==0) {
+                        strcpy(dirParent[i].type,"U");
+                        break;
+                }
+                i++;
+        }
 
-	printf("%s\n","contents of newParentDir");
-	i=0;
-	while(strcmp((dirParent[i].type),"U")!=0) {
-		printf("%s\n",dirParentNew[i].name);
-		i++;
-	}
-	/*int i = 0;
-	while(strcmp((dirParent[i].type),"U")!=0) {
-		//check if name already exists.
-		printf("%s","itterating through parent directory to find file:     ");
-		printf("%s\n",dirParent[i].name);
-		if(strcmp(dirParent[i].name, directoryName)==0) {
-			strcpy(dirParent[i].type,"U");
-			break;
-		}
-		i++; 
-	}
+        i++;
+        printf("%s\n","moving everything back by one");
+        printf("%s\n",dirParent[0].name);
+        while(strcmp((dirParent[i].type),"U")!=0) {
+                dirParent[i-1] = dirParent[i];
+                //strcpy(dirParent[i-1].name, dirParent[i].name);
+                //strcpy(dirParent[i-1].type, dirParent[i].type);
+                printf("%s","name of what is being moved back: ");
+                printf("%s\n",dirParent[i-1].name);
+                i++;
+        }
 
-	i++;
-	printf("%s\n","moving everything back by one");
-	printf("%s\n",dirParent[0].name);
-	while(strcmp((dirParent[i].type),"U")!=0) {
-		dirParent[i-1] = dirParent[i];
-		//strcpy(dirParent[i-1].name, dirParent[i].name);
-		//strcpy(dirParent[i-1].type, dirParent[i].type);
-		printf("%s","name of what is being moved back:     ");
-		printf("%s\n",dirParent[i-1].name);
-		i++;
-	}
-
-	strcpy(dirParent[i-1].type, "U"); //Prevents copy of last element in array
+        strcpy(dirParent[i-1].type, "U"); //Prevents copy of last element in array
 */
-	//re-upload new parent directory
-	printf("%s\n","uploading parent directory to following path:");
-	printf("%s\n",directoryPath);
-	if ((s3fs_put_object(ctx->s3bucket, directoryPath, (const uint8_t *)&dirParentNew, sizeof(dirParentNew)))!=sizeof(dirParentNew)) {
-		fprintf(stderr, "failed to add the new directory");
-		return -EIO;
-	} 
+        //re-upload new parent directory
+        printf("%s\n","uploading parent directory to following path:");
+        printf("%s\n",directoryPath);
+		printf("%s", "size of direparentnew:   ");
+		printf("%d\n", sizeof(dirParentNew));
+
+        printf("%s", "removing directory from following path: ");
+        printf("%s\n",path);
+        if (s3fs_remove_object(ctx->s3bucket, path) == -1) {
+                fprintf(stderr, "remove directory failed");
+                return -EIO;
+        }
+
+        if ((s3fs_put_object(ctx->s3bucket, directoryPath, (const uint8_t *)&dirParentNew, sizeof(dirParentNew)))!=sizeof(dirParentNew)) {
+                fprintf(stderr, "failed to add the new directory");
+                return -EIO;
+        }
 
 
-	printf("%s", "removing directory from following path:    ");
-	printf("%s\n",path);
-	if (s3fs_remove_object(ctx->s3bucket, path) == -1) {
-		fprintf(stderr, "remove directory failed");
-		return -EIO;
-	}
-
-	/*printf("%s","directory path:    ");
-	printf("%s\n",directoryPath);
-	printf("%s","directory name:    ");
-	printf("%s\n",directoryName);*/
-	
 
 
-	//free(dir);
+        /*printf("%s","directory path: ");
+        printf("%s\n",directoryPath);
+        printf("%s","directory name: ");
+        printf("%s\n",directoryName);*/
+        
+
+
+        //free(dir);
     return 0;
 }
+
+
 
 
 /* *************************************** */
