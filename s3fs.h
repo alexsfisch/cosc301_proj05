@@ -27,22 +27,16 @@ typedef struct {
  * type) should go here.
  */
 
-typedef struct{
-	char name[256];
-	char type[1];
-	time_t timeAccess;			//time last accessed
-	time_t timeMod;				//time last modified
-	off_t size;					//the file size
-	char path[1024];			//path
-} objects;
 
 typedef struct {
-	objects dirArray[2];
 	char name[256];				//name
-	char type[1];			//type
+	char type[1];				//type
 	time_t timeAccess;			//time last accessed
 	time_t timeMod;				//time last modified
 	off_t size;					//the file size
+	uid_t userID;				//user ID
+	gid_t groupID;				//group ID
+	mode_t protection;			//protection
 	//char path[1024];			//path
 	
 } s3dirent_t;
