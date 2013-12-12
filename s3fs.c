@@ -417,10 +417,11 @@ int fs_rmdir(const char *path) {
 		}
 		else{
 			dirParentNew[j] = dirParent[i];
+			printf("%s","name of what is being moved back:     ");
+			printf("%s\n",dirParentNew[j].name);
 			i++;
 			j++;
-			printf("%s","name of what is being moved back:     ");
-			printf("%s\n",dirParent[i].name);
+
 		}
 	}
 	printf("%s\n","testing 200");
