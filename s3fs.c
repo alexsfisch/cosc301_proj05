@@ -404,11 +404,37 @@ int fs_rmdir(const char *path) {
 		return -EIO;
 	}
 
-
 	int i = 0;
+	int j = 0;
+	printf("%s\n","testing 100");
+	printf("%s\n",dirParent[i].name);
+	s3dirent_t dirParentNew[sizeof(dirParent)-1];
+	while(strcmp((dirParent[i].type),"U")!=0) {
+		printf("%s\n",dirParent[i].name);
+		if(strcmp(dirParent[i].name, directoryName)==0) {
+			//strcpy(dirParent[i].type,"U");
+			i++;
+		}
+		else{
+			dirParentNew[j] = dirParent[i];
+			i++;
+			j++;
+			printf("%s","name of what is being moved back:     ");
+			printf("%s\n",dirParent[i].name);
+		}
+	}
+	printf("%s\n","testing 200");
+
+	printf("%s\n","contents of newParentDir");
+	i=0;
+	while(strcmp((dirParent[i].type),"U")!=0) {
+		printf("%s\n",dirParentNew[i].name);
+		i++;
+	}
+	/*int i = 0;
 	while(strcmp((dirParent[i].type),"U")!=0) {
 		//check if name already exists.
-		printf("%s","name:     ");
+		printf("%s","itterating through parent directory to find file:     ");
 		printf("%s\n",dirParent[i].name);
 		if(strcmp(dirParent[i].name, directoryName)==0) {
 			strcpy(dirParent[i].type,"U");
@@ -422,42 +448,39 @@ int fs_rmdir(const char *path) {
 	printf("%s\n",dirParent[0].name);
 	while(strcmp((dirParent[i].type),"U")!=0) {
 		dirParent[i-1] = dirParent[i];
-		printf("%s","name:     ");
+		//strcpy(dirParent[i-1].name, dirParent[i].name);
+		//strcpy(dirParent[i-1].type, dirParent[i].type);
+		printf("%s","name of what is being moved back:     ");
 		printf("%s\n",dirParent[i-1].name);
 		i++;
 	}
 
 	strcpy(dirParent[i-1].type, "U"); //Prevents copy of last element in array
-
-/*
-	//copy over all metadata
-	strcpy(dirParent[0].name, dir[0].name);				//set name of directory to ".". 
-	dirParent[0].timeAccess = dir[0].timeAccess;				//set directory last access time to temp
-	dirParent[0].timeMod = dir[0].timeMod;					//set directory last modified time to temp
-	dirParent[0].size = sizeof(dirParent);		//set directory size to size of s3dirent struct
-	strcpy(dirParent[0].type, dir[0].type);				//set diretory type to directory
-	dirParent[0].userID = dir[0].userID;				//get user ID
-	dirParent[0].groupID = dir[0].groupID;				//get group ID
-	dirParent[0].protection = (S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR);	
 */
-	if (s3fs_remove_object(ctx->s3bucket, path) == -1) {
-		fprintf(stderr, "remove directory failed");
-		return -EIO;
-	}
-
-	printf("%s","directory path:    ");
-	printf("%s\n",directoryPath);
-	printf("%s","directory name:    ");
-	printf("%s\n",directoryName);
-	
 	//re-upload new parent directory
-	if ((s3fs_put_object(ctx->s3bucket, directoryPath, (const uint8_t *)&dirParent, sizeof(dirParent)))!=sizeof(dirParent)) {
+	printf("%s\n","uploading parent directory to following path:");
+	printf("%s\n",directoryPath);
+	if ((s3fs_put_object(ctx->s3bucket, directoryPath, (const uint8_t *)&dirParentNew, sizeof(dirParentNew)))!=sizeof(dirParentNew)) {
 		fprintf(stderr, "failed to add the new directory");
 		return -EIO;
 	} 
 
 
-	free(dir);
+	printf("%s", "removing directory from following path:    ");
+	printf("%s\n",path);
+	if (s3fs_remove_object(ctx->s3bucket, path) == -1) {
+		fprintf(stderr, "remove directory failed");
+		return -EIO;
+	}
+
+	/*printf("%s","directory path:    ");
+	printf("%s\n",directoryPath);
+	printf("%s","directory name:    ");
+	printf("%s\n",directoryName);*/
+	
+
+
+	//free(dir);
     return 0;
 }
 
