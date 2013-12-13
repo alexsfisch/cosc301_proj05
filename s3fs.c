@@ -132,7 +132,7 @@ int fs_getattr(const char *path, struct stat *statbuf) {
 	printf("%s","i:      ");
 	printf("%d\n",i);
 	if(strcmp(dirParent[i].type,"F")==0) {
-		printf("%s\n","YOU HAVE A MUTHER FUCKING FILE ON HAND!!!!!!!!!!!!!!!!!!!!!");
+		printf("%s\n","YOU HAVE A FILE ON HAND!!!!!!!!!!!!!!!!!!!!!");
 		statbuf->st_size = dirParent[i].size;
 		statbuf->st_dev = 0;
 		statbuf->st_ino = 0;
@@ -147,7 +147,7 @@ int fs_getattr(const char *path, struct stat *statbuf) {
 		statbuf->st_mtime = dirParent[i].timeMod;
 		statbuf->st_ctime = 0;
 	}
-	else{
+	else {
 		if ((s3fs_get_object(ctx->s3bucket, path, (uint8_t **)&dir, 0, 0)<0)) {
 			fprintf(stderr, "invalid path");
 			return -ENOENT;
